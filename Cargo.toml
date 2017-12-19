@@ -6,7 +6,7 @@ description = "A simple thread pool library"
 homepage = "https://github.com/sile/tasque"
 repository = "https://github.com/sile/tasque"
 readme = "README.md"
-keywords = ["thread pool"]
+keywords = ["thread-pool"]
 categories = ["concurrency"]
 license = "MIT"
 
