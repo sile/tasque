@@ -19,7 +19,7 @@ mod tests {
         let queue = TaskQueueBuilder::new().worker_count(1).finish();
         for (i, tx) in (0..3).map(|i| (i, tx.clone())) {
             queue.enqueue(move || {
-                thread::sleep(Duration::from_millis(1));
+                thread::sleep(Duration::from_millis(30 - i * 10));
                 let _ = tx.send(i);
             });
         }
@@ -34,7 +34,7 @@ mod tests {
         let queue = TaskQueueBuilder::new().worker_count(3).finish();
         for (i, tx) in (0..3).map(|i| (i, tx.clone())) {
             queue.enqueue(move || {
-                thread::sleep(Duration::from_millis(3 - i));
+                thread::sleep(Duration::from_millis(30 - i * 10));
                 let _ = tx.send(i);
             });
         }
