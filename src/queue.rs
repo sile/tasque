@@ -7,20 +7,36 @@ use num_cpus;
 use task::Task;
 use worker::{Worker, WorkerHandle};
 
+/// `TaskQueue` builder.
+///
+/// # Examples
+///
+/// ```
+/// use tasque::TaskQueueBuilder;
+///
+/// let queue = TaskQueueBuilder::new().worker_count(4).finish();
+/// queue.enqueue(|| println!("Hello"));
+/// queue.enqueue(|| println!("World"));
+/// ```
 #[derive(Debug)]
 pub struct TaskQueueBuilder {
     worker_count: usize,
 }
 impl TaskQueueBuilder {
+    /// Makes a new `TaskQueueBuilder` instance.
     pub fn new() -> Self {
         TaskQueueBuilder {
             worker_count: num_cpus::get(),
         }
     }
+
+    /// Sets the number of worker threads which the queue to be built will spawn.
     pub fn worker_count(&mut self, count: usize) -> &mut Self {
         self.worker_count = count;
         self
     }
+
+    /// Builds a `TaskQueue` instance.
     pub fn finish(&self) -> TaskQueue {
         let (task_tx, task_rx) = mpsc::channel();
         let workers = (0..self.worker_count).map(|_| Worker::start()).collect();
@@ -40,14 +56,37 @@ impl Default for TaskQueueBuilder {
     }
 }
 
+/// Task queue.
+///
+/// This queue spawns worker threads for executing registered tasks.
+///
+/// # Examples
+///
+/// ```
+/// use tasque::TaskQueue;
+///
+/// let queue = TaskQueue::new();
+/// queue.enqueue(|| println!("Hello"));
+/// queue.enqueue(|| println!("World"));
+/// ```
 #[derive(Debug, Clone)]
 pub struct TaskQueue {
     task_tx: mpsc::Sender<Task>,
 }
 impl TaskQueue {
+    /// Makes a new `TaskQueue` instance.
+    ///
+    /// This is equivalent to `TaskQueueBuilder::new().finish()`.
     pub fn new() -> Self {
         TaskQueueBuilder::new().finish()
     }
+
+    /// Enqueues a task.
+    ///
+    /// The task will be executed by a worker thread.
+    ///
+    /// If the thread panics while executing the task, it will be automatically restarted.
+    /// Note that the task will not be retried in such case.
     pub fn enqueue<F>(&self, task: F)
     where
         F: FnOnce() + Send + 'static,

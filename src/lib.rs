@@ -1,3 +1,32 @@
+//! A simple thread pool library for Rust.
+//!
+//! # Examples
+//!
+//! ```
+//! use std::sync::mpsc;
+//! use std::thread;
+//! use std::time::Duration;
+//! use tasque::TaskQueue;
+//!
+//! // Creates a task queue.
+//! // This queue spawns worker threads for executing tasks.
+//! let queue = TaskQueue::new();
+//!
+//! // Executes asynchronous tasks.
+//! let (tx, rx) = mpsc::channel();
+//! for (i, tx) in (0..3).map(|i| (i, tx.clone())) {
+//!     queue.enqueue(move || {
+//!         thread::sleep(Duration::from_millis(30 - i * 10));
+//!         let _ = tx.send(i);
+//!     });
+//! }
+//!
+//! // Waits results.
+//! assert_eq!(rx.recv().ok(), Some(2));
+//! assert_eq!(rx.recv().ok(), Some(1));
+//! assert_eq!(rx.recv().ok(), Some(0));
+//! ```
+#![warn(missing_docs)]
 extern crate num_cpus;
 
 pub use queue::{TaskQueue, TaskQueueBuilder};
