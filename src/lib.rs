@@ -6,17 +6,17 @@
 //! use std::sync::mpsc;
 //! use std::thread;
 //! use std::time::Duration;
-//! use tasque::TaskQueue;
+//! use tasque::TaskQueueBuilder;
 //!
 //! // Creates a task queue.
 //! // This queue spawns worker threads for executing tasks.
-//! let queue = TaskQueue::new();
+//! let queue = TaskQueueBuilder::new().worker_count(3).finish();
 //!
 //! // Executes asynchronous tasks.
 //! let (tx, rx) = mpsc::channel();
 //! for (i, tx) in (0..3).map(|i| (i, tx.clone())) {
 //!     queue.enqueue(move || {
-//!         thread::sleep(Duration::from_millis(200 - i * 100));
+//!         thread::sleep(Duration::from_millis(20 - i * 10));
 //!         let _ = tx.send(i);
 //!     });
 //! }
@@ -63,7 +63,7 @@ mod tests {
         let queue = TaskQueueBuilder::new().worker_count(3).finish();
         for (i, tx) in (0..3).map(|i| (i, tx.clone())) {
             queue.enqueue(move || {
-                thread::sleep(Duration::from_millis(200 - i * 100));
+                thread::sleep(Duration::from_millis(20 - i * 10));
                 let _ = tx.send(i);
             });
         }
