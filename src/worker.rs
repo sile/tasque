@@ -14,18 +14,15 @@ pub struct Worker {
     metrics: Metrics,
 }
 impl Worker {
-    pub fn start(metrics_builder: MetricsBuilder) -> WorkerHandle {
+    pub fn start(id: usize, metrics_builder: &MetricsBuilder) -> WorkerHandle {
         let round = Arc::new(AtomicUsize::new(0));
         let (task_tx, task_rx) = mpsc::channel();
-        let round_for_worker = Arc::clone(&round);
-        thread::spawn(move || {
-            let mut worker = Worker {
-                task_rx,
-                round: round_for_worker,
-                metrics: Metrics::new(&metrics_builder),
-            };
-            while worker.run_once() {}
-        });
+        let mut worker = Worker {
+            task_rx,
+            round: Arc::clone(&round),
+            metrics: Metrics::new(id, metrics_builder),
+        };
+        thread::spawn(move || while worker.run_once() {});
         WorkerHandle {
             task_tx,
             round,
@@ -74,8 +71,7 @@ struct Metrics {
     task_duration_seconds: Histogram,
 }
 impl Metrics {
-    fn new(builder: &MetricsBuilder) -> Self {
-        let thread_id = format!("{:?}", thread::current().id());
+    fn new(id: usize, builder: &MetricsBuilder) -> Self {
         Metrics {
             task_duration_seconds: builder
                 .histogram("task_duration_seconds")
@@ -87,7 +83,7 @@ impl Metrics {
                 .bucket(1.0)
                 .bucket(10.0)
                 .bucket(100.0)
-                .label("thread", &thread_id)
+                .label("worker", &id.to_string())
                 .finish()
                 .expect("Never fails"),
         }

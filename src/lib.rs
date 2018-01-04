@@ -42,32 +42,33 @@
 //!
 //! # fn main() {
 //! let queue = TaskQueueBuilder::new().worker_count(1).finish();
+//! queue.enqueue(|| panic!());
 //! queue.enqueue(|| {});
-//! std::thread::sleep(Duration::from_millis(10));
+//! std::thread::sleep(Duration::from_millis(100));
 //!
 //! let metrics = default_gatherer().lock().unwrap().gather().to_text();
 //! assert_eq!(metrics,
 //! [
 //!  "# HELP tasque_queue_dequeued_tasks_total Number of dequeued tasks",
 //!  "# TYPE tasque_queue_dequeued_tasks_total counter",
-//!  "tasque_queue_dequeued_tasks_total 1",
+//!  "tasque_queue_dequeued_tasks_total 2",
 //!  "# HELP tasque_queue_enqueued_tasks_total Number of enqueued tasks",
 //!  "# TYPE tasque_queue_enqueued_tasks_total counter",
-//!  "tasque_queue_enqueued_tasks_total 1",
-//!  "# HELP tasque_queue_started_workers_total Number of workers started so far",
-//!  "# TYPE tasque_queue_started_workers_total counter",
-//!  "tasque_queue_started_workers_total 1",
+//!  "tasque_queue_enqueued_tasks_total 2",
+//!  "# HELP tasque_worker_restarts_total Number of worker restarts",
+//!  "# TYPE tasque_worker_restarts_total counter",
+//!  "tasque_worker_restarts_total 1",
 //!  "# HELP tasque_worker_task_duration_seconds Execution time of tasks",
 //!  "# TYPE tasque_worker_task_duration_seconds histogram",
-//!  "tasque_worker_task_duration_seconds_bucket{le=\"0.001\",thread=\"ThreadId(1)\"} 1",
-//!  "tasque_worker_task_duration_seconds_bucket{le=\"0.01\",thread=\"ThreadId(1)\"} 1",
-//!  "tasque_worker_task_duration_seconds_bucket{le=\"0.1\",thread=\"ThreadId(1)\"} 1",
-//!  "tasque_worker_task_duration_seconds_bucket{le=\"1\",thread=\"ThreadId(1)\"} 1",
-//!  "tasque_worker_task_duration_seconds_bucket{le=\"10\",thread=\"ThreadId(1)\"} 1",
-//!  "tasque_worker_task_duration_seconds_bucket{le=\"100\",thread=\"ThreadId(1)\"} 1",
-//!  "tasque_worker_task_duration_seconds_bucket{le=\"+Inf\",thread=\"ThreadId(1)\"} 1",
-//!  "tasque_worker_task_duration_seconds_sum{thread=\"ThreadId(1)\"} 0.000001392",
-//!  "tasque_worker_task_duration_seconds_count{thread=\"ThreadId(1)\"} 1"
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"0.001\",worker=\"0\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"0.01\",worker=\"0\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"0.1\",worker=\"0\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"1\",worker=\"0\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"10\",worker=\"0\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"100\",worker=\"0\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"+Inf\",worker=\"0\"} 1",
+//!  "tasque_worker_task_duration_seconds_sum{worker=\"0\"} 0.000001392",
+//!  "tasque_worker_task_duration_seconds_count{worker=\"0\"} 1"
 //! ].iter().map(|s| format!("{}\n", s)).collect::<Vec<_>>().join("")
 //! );
 //! # }

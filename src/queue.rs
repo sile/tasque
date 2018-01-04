@@ -58,17 +58,17 @@ impl TaskQueueBuilder {
     /// Builds a `TaskQueue` instance.
     pub fn finish(&self) -> TaskQueue {
         let (task_tx, task_rx) = mpsc::channel();
+        let workers = (0..self.worker_count)
+            .map(|i| Worker::start(i, &self.metrics_builder))
+            .collect();
         let mut manager = TaskQueueManager {
             task_rx,
-            workers: Vec::new(), // dummy
+            workers,
             seq_num: 0,
             tasks: VecDeque::new(),
             metrics: Metrics::new(&self.metrics_builder),
             metrics_builder: self.metrics_builder.clone(),
         };
-        manager.workers = (0..self.worker_count)
-            .map(|_| manager.start_worker())
-            .collect();
         thread::spawn(move || while manager.run_once() {});
         TaskQueue { task_tx }
     }
@@ -147,34 +147,32 @@ impl TaskQueueManager {
             }
         }
         if let Some(task) = self.tasks.pop_front() {
-            self.dispatch(task);
-            self.metrics.dequeued_tasks.increment();
+            if let Some(task) = self.dispatch(task) {
+                self.tasks.push_front(task);
+                thread::sleep(Duration::from_millis(1));
+            } else {
+                self.metrics.dequeued_tasks.increment();
+            }
         }
         true
     }
-    fn dispatch(&mut self, mut task: Task) {
-        let last = self.seq_num % self.workers.len();
-        loop {
-            self.seq_num += 1;
+    fn dispatch(&mut self, mut task: Task) -> Option<Task> {
+        for _ in 0..self.workers.len() {
+            self.seq_num = self.seq_num.wrapping_add(1);
             let i = self.seq_num % self.workers.len();
             match self.workers[i].try_execute(task) {
                 Err(t) => {
-                    self.workers[i] = self.start_worker();
+                    self.workers[i] = Worker::start(i, &self.metrics_builder);
+                    self.metrics.worker_restarts.increment();
                     task = t;
                 }
                 Ok(Some(t)) => {
                     task = t;
                 }
-                Ok(None) => break,
-            }
-            if last == i {
-                thread::sleep(Duration::from_millis(1));
+                Ok(None) => return None,
             }
         }
-    }
-    fn start_worker(&self) -> WorkerHandle {
-        self.metrics.started_workers.increment();
-        Worker::start(self.metrics_builder.clone())
+        Some(task)
     }
 }
 
@@ -182,7 +180,7 @@ impl TaskQueueManager {
 struct Metrics {
     enqueued_tasks: Counter,
     dequeued_tasks: Counter,
-    started_workers: Counter,
+    worker_restarts: Counter,
 }
 impl Metrics {
     pub fn new(builder: &MetricsBuilder) -> Self {
@@ -199,10 +197,10 @@ impl Metrics {
                 .help("Number of dequeued tasks (those may not have been executed yet)")
                 .finish()
                 .expect("Never fails"),
-            started_workers: builder
-                .counter("started_workers_total")
-                .subsystem("queue")
-                .help("Number of workers started so far")
+            worker_restarts: builder
+                .counter("restarts_total")
+                .subsystem("worker")
+                .help("Number of worker restarts")
                 .finish()
                 .expect("Never fails"),
         }
