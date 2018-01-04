@@ -1,9 +1,12 @@
+use std::collections::VecDeque;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-
+use prometrics::Registry;
+use prometrics::metrics::Counter;
 use num_cpus;
 
+use metrics::MetricsBuilder;
 use task::Task;
 use worker::{Worker, WorkerHandle};
 
@@ -21,13 +24,22 @@ use worker::{Worker, WorkerHandle};
 #[derive(Debug)]
 pub struct TaskQueueBuilder {
     worker_count: usize,
+    metrics_builder: MetricsBuilder,
 }
 impl TaskQueueBuilder {
     /// Makes a new `TaskQueueBuilder` instance.
     pub fn new() -> Self {
         TaskQueueBuilder {
             worker_count: num_cpus::get(),
+            metrics_builder: MetricsBuilder::new(),
         }
+    }
+
+    /// Sets the name of this queue.
+    ///
+    /// If it is specified, the metrics of this queue have the label `name="${name}"`.
+    pub fn queue_name(&mut self, name: &str) {
+        self.metrics_builder.name(name);
     }
 
     /// Sets the number of worker threads which the queue to be built will spawn.
@@ -36,16 +48,27 @@ impl TaskQueueBuilder {
         self
     }
 
+    /// Sets the registry of the metrics of this queue.
+    ///
+    /// The default value is `prometrics::default_registry()`.
+    pub fn metrics_registry(&mut self, registry: Registry) {
+        self.metrics_builder.registry(registry);
+    }
+
     /// Builds a `TaskQueue` instance.
     pub fn finish(&self) -> TaskQueue {
         let (task_tx, task_rx) = mpsc::channel();
-        let workers = (0..self.worker_count).map(|_| Worker::start()).collect();
         let mut manager = TaskQueueManager {
             task_rx,
-            workers,
+            workers: Vec::new(), // dummy
             seq_num: 0,
-            task: None,
+            tasks: VecDeque::new(),
+            metrics: Metrics::new(&self.metrics_builder),
+            metrics_builder: self.metrics_builder.clone(),
         };
+        manager.workers = (0..self.worker_count)
+            .map(|_| manager.start_worker())
+            .collect();
         thread::spawn(move || while manager.run_once() {});
         TaskQueue { task_tx }
     }
@@ -105,19 +128,27 @@ struct TaskQueueManager {
     task_rx: mpsc::Receiver<Task>,
     workers: Vec<WorkerHandle>,
     seq_num: usize,
-    task: Option<Task>,
+    tasks: VecDeque<Task>,
+    metrics: Metrics,
+    metrics_builder: MetricsBuilder,
 }
 impl TaskQueueManager {
-    pub fn run_once(&mut self) -> bool {
-        if self.task.is_none() {
+    fn run_once(&mut self) -> bool {
+        while let Ok(task) = self.task_rx.try_recv() {
+            self.metrics.enqueued_tasks.increment();
+            self.tasks.push_back(task);
+        }
+        if self.tasks.is_empty() {
             if let Ok(task) = self.task_rx.recv() {
-                self.task = Some(task);
+                self.metrics.enqueued_tasks.increment();
+                self.tasks.push_back(task);
             } else {
                 return false;
             }
         }
-        if let Some(task) = self.task.take() {
+        if let Some(task) = self.tasks.pop_front() {
             self.dispatch(task);
+            self.metrics.dequeued_tasks.increment();
         }
         true
     }
@@ -128,7 +159,7 @@ impl TaskQueueManager {
             let i = self.seq_num % self.workers.len();
             match self.workers[i].try_execute(task) {
                 Err(t) => {
-                    self.workers[i] = Worker::start();
+                    self.workers[i] = self.start_worker();
                     task = t;
                 }
                 Ok(Some(t)) => {
@@ -139,6 +170,41 @@ impl TaskQueueManager {
             if last == i {
                 thread::sleep(Duration::from_millis(1));
             }
+        }
+    }
+    fn start_worker(&self) -> WorkerHandle {
+        self.metrics.started_workers.increment();
+        Worker::start(self.metrics_builder.clone())
+    }
+}
+
+#[derive(Debug)]
+struct Metrics {
+    enqueued_tasks: Counter,
+    dequeued_tasks: Counter,
+    started_workers: Counter,
+}
+impl Metrics {
+    pub fn new(builder: &MetricsBuilder) -> Self {
+        Metrics {
+            enqueued_tasks: builder
+                .counter("enqueued_tasks_total")
+                .subsystem("queue")
+                .help("Number of enqueued tasks")
+                .finish()
+                .expect("Never fails"),
+            dequeued_tasks: builder
+                .counter("dequeued_tasks_total")
+                .subsystem("queue")
+                .help("Number of dequeued tasks (those may not have been executed yet)")
+                .finish()
+                .expect("Never fails"),
+            started_workers: builder
+                .counter("started_workers_total")
+                .subsystem("queue")
+                .help("Number of workers started so far")
+                .finish()
+                .expect("Never fails"),
         }
     }
 }

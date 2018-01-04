@@ -2,6 +2,8 @@
 //!
 //! # Examples
 //!
+//! Basic usage:
+//!
 //! ```
 //! use std::sync::mpsc;
 //! use std::thread;
@@ -26,11 +28,57 @@
 //! assert_eq!(rx.recv().ok(), Some(1));
 //! assert_eq!(rx.recv().ok(), Some(0));
 //! ```
+//!
+//! This library exposes some [prometheus] metrics:
+//!
+//! [prometheus]: https://prometheus.io/
+//!
+//! ```no_run
+//! # extern crate tasque;
+//! # extern crate prometrics;
+//! use std::time::Duration;
+//! use prometrics::default_gatherer;
+//! use tasque::TaskQueueBuilder;
+//!
+//! # fn main() {
+//! let queue = TaskQueueBuilder::new().worker_count(1).finish();
+//! queue.enqueue(|| {});
+//! std::thread::sleep(Duration::from_millis(10));
+//!
+//! let metrics = default_gatherer().lock().unwrap().gather().to_text();
+//! assert_eq!(metrics,
+//! [
+//!  "# HELP tasque_queue_dequeued_tasks_total Number of dequeued tasks",
+//!  "# TYPE tasque_queue_dequeued_tasks_total counter",
+//!  "tasque_queue_dequeued_tasks_total 1",
+//!  "# HELP tasque_queue_enqueued_tasks_total Number of enqueued tasks",
+//!  "# TYPE tasque_queue_enqueued_tasks_total counter",
+//!  "tasque_queue_enqueued_tasks_total 1",
+//!  "# HELP tasque_queue_started_workers_total Number of workers started so far",
+//!  "# TYPE tasque_queue_started_workers_total counter",
+//!  "tasque_queue_started_workers_total 1",
+//!  "# HELP tasque_worker_task_duration_seconds Execution time of tasks",
+//!  "# TYPE tasque_worker_task_duration_seconds histogram",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"0.001\",thread=\"ThreadId(1)\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"0.01\",thread=\"ThreadId(1)\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"0.1\",thread=\"ThreadId(1)\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"1\",thread=\"ThreadId(1)\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"10\",thread=\"ThreadId(1)\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"100\",thread=\"ThreadId(1)\"} 1",
+//!  "tasque_worker_task_duration_seconds_bucket{le=\"+Inf\",thread=\"ThreadId(1)\"} 1",
+//!  "tasque_worker_task_duration_seconds_sum{thread=\"ThreadId(1)\"} 0.000001392",
+//!  "tasque_worker_task_duration_seconds_count{thread=\"ThreadId(1)\"} 1"
+//! ].iter().map(|s| format!("{}\n", s)).collect::<Vec<_>>().join("")
+//! );
+//! # }
+//! ```
 #![warn(missing_docs)]
 extern crate num_cpus;
+extern crate prometrics;
 
 pub use queue::{TaskQueue, TaskQueueBuilder};
 
+mod metrics;
 mod queue;
 mod task;
 mod worker;

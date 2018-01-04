@@ -16,3 +16,4 @@ codecov = {repository = "sile/tasque"}
 
 [dependencies]
 num_cpus = "1"
+prometrics = "0.1"
