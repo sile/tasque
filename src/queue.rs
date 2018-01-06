@@ -38,8 +38,9 @@ impl TaskQueueBuilder {
     /// Sets the name of this queue.
     ///
     /// If it is specified, the metrics of this queue have the label `name="${name}"`.
-    pub fn queue_name(&mut self, name: &str) {
+    pub fn queue_name(&mut self, name: &str) -> &mut Self {
         self.metrics_builder.name(name);
+        self
     }
 
     /// Sets the number of worker threads which the queue to be built will spawn.
@@ -51,8 +52,9 @@ impl TaskQueueBuilder {
     /// Sets the registry of the metrics of this queue.
     ///
     /// The default value is `prometrics::default_registry()`.
-    pub fn metrics_registry(&mut self, registry: Registry) {
+    pub fn metrics_registry(&mut self, registry: Registry) -> &mut Self {
         self.metrics_builder.registry(registry);
+        self
     }
 
     /// Builds a `TaskQueue` instance.
