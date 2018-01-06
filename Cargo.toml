@@ -1,6 +1,6 @@
 [package]
 name = "tasque"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Takeru Ohta <phjgt308@gmail.com>"]
 description = "A simple thread pool library"
 homepage = "https://github.com/sile/tasque"
