@@ -82,6 +82,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let queue = TaskQueueBuilder::new().worker_count(1).finish();
         queue.enqueue(|| panic!());
+        thread::sleep(Duration::from_millis(1));
         queue.enqueue(move || tx.send(0).unwrap());
         assert_eq!(rx.recv().ok(), Some(0));
     }
