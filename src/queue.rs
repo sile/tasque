@@ -1,8 +1,6 @@
-use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
 use prometrics::metrics::MetricBuilder;
 use num_cpus;
 
@@ -53,20 +51,23 @@ impl TaskQueueBuilder {
     /// Builds a `TaskQueue` instance.
     pub fn finish(&self) -> TaskQueue {
         let (task_tx, task_rx) = mpsc::channel();
+        let (ctrl_tx, ctrl_rx) = mpsc::channel();
         let metrics = Arc::new(Metrics::new(self.metrics.clone()));
-        metrics.workers.set(self.worker_count as f64);
-        let workers = (0..self.worker_count)
-            .map(|_| Worker::start(Arc::clone(&metrics)))
-            .collect();
         let mut manager = TaskQueueManager {
             task_rx,
-            workers,
-            seq_num: 0,
-            tasks: VecDeque::new(),
+            ctrl_rx,
+            ctrl_tx: ctrl_tx.clone(),
+            generation: 0,
             metrics: Arc::clone(&metrics),
         };
         thread::spawn(move || while manager.run_once() {});
-        TaskQueue { task_tx, metrics }
+        let queue = TaskQueue {
+            task_tx,
+            ctrl_tx,
+            metrics,
+        };
+        queue.set_worker_count(self.worker_count);
+        queue
     }
 }
 impl Default for TaskQueueBuilder {
@@ -91,6 +92,7 @@ impl Default for TaskQueueBuilder {
 #[derive(Debug, Clone)]
 pub struct TaskQueue {
     task_tx: mpsc::Sender<Task>,
+    ctrl_tx: mpsc::Sender<Control>,
     metrics: Arc<Metrics>,
 }
 impl TaskQueue {
@@ -111,8 +113,14 @@ impl TaskQueue {
     where
         F: FnOnce() + Send + 'static,
     {
-        assert!(self.task_tx.send(Task::new(task)).is_ok());
+        let _ = self.task_tx.send(Task::new(task, self.ctrl_tx.clone()));
         self.metrics.enqueued_tasks.increment();
+    }
+
+    /// Updates the number of worker threads of this queue.
+    pub fn set_worker_count(&self, count: usize) {
+        let ctrl = Control::SetWorkerCount(count);
+        let _ = self.ctrl_tx.send(ctrl);
     }
 }
 impl Default for TaskQueue {
@@ -124,49 +132,44 @@ impl Default for TaskQueue {
 #[derive(Debug)]
 struct TaskQueueManager {
     task_rx: mpsc::Receiver<Task>,
-    workers: Vec<WorkerHandle>,
-    seq_num: usize,
-    tasks: VecDeque<Task>,
+    ctrl_rx: mpsc::Receiver<Control>,
+    ctrl_tx: mpsc::Sender<Control>,
+    generation: usize,
     metrics: Arc<Metrics>,
 }
 impl TaskQueueManager {
     fn run_once(&mut self) -> bool {
-        while let Ok(task) = self.task_rx.try_recv() {
-            self.tasks.push_back(task);
-        }
-        if self.tasks.is_empty() {
-            if let Ok(task) = self.task_rx.recv() {
-                self.tasks.push_back(task);
-            } else {
-                return false;
+        match self.ctrl_rx.recv().expect("Never fails") {
+            Control::SetWorkerCount(count) => {
+                self.generation += 1;
+                for _ in 0..count {
+                    let worker = Worker::start(self.generation, Arc::clone(&self.metrics));
+                    let _ = self.ctrl_tx.send(Control::PutToPool(worker));
+                }
+                self.metrics.workers.set(count as f64);
             }
-        }
-        if let Some(task) = self.tasks.pop_front() {
-            if let Some(task) = self.dispatch(task) {
-                self.tasks.push_front(task);
-                thread::sleep(Duration::from_millis(1));
-            } else {
-                self.metrics.dequeued_tasks.increment();
+            Control::PutToPool(worker) => {
+                if worker.generation() != self.generation {
+                    return true;
+                }
+                if let Ok(task) = self.task_rx.recv() {
+                    self.metrics.dequeued_tasks.increment();
+                    if let Err(task) = worker.try_execute(task) {
+                        let worker = Worker::start(self.generation, Arc::clone(&self.metrics));
+                        worker.try_execute(task).expect("Never fails");
+                        self.metrics.worker_restarts.increment();
+                    }
+                } else {
+                    return false;
+                }
             }
         }
         true
     }
-    fn dispatch(&mut self, mut task: Task) -> Option<Task> {
-        for _ in 0..self.workers.len() {
-            self.seq_num = self.seq_num.wrapping_add(1);
-            let i = self.seq_num % self.workers.len();
-            match self.workers[i].try_execute(task) {
-                Err(t) => {
-                    self.workers[i] = Worker::start(Arc::clone(&self.metrics));
-                    self.metrics.worker_restarts.increment();
-                    task = t;
-                }
-                Ok(Some(t)) => {
-                    task = t;
-                }
-                Ok(None) => return None,
-            }
-        }
-        Some(task)
-    }
+}
+
+#[derive(Debug)]
+pub enum Control {
+    SetWorkerCount(usize),
+    PutToPool(WorkerHandle),
 }
