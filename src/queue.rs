@@ -1,12 +1,12 @@
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use prometrics::Registry;
-use prometrics::metrics::Counter;
+use prometrics::metrics::MetricBuilder;
 use num_cpus;
 
-use metrics::MetricsBuilder;
+use metrics::Metrics;
 use task::Task;
 use worker::{Worker, WorkerHandle};
 
@@ -24,23 +24,15 @@ use worker::{Worker, WorkerHandle};
 #[derive(Debug)]
 pub struct TaskQueueBuilder {
     worker_count: usize,
-    metrics_builder: MetricsBuilder,
+    metrics: MetricBuilder,
 }
 impl TaskQueueBuilder {
     /// Makes a new `TaskQueueBuilder` instance.
     pub fn new() -> Self {
         TaskQueueBuilder {
             worker_count: num_cpus::get(),
-            metrics_builder: MetricsBuilder::new(),
+            metrics: MetricBuilder::new(),
         }
-    }
-
-    /// Sets the name of this queue.
-    ///
-    /// If it is specified, the metrics of this queue have the label `name="${name}"`.
-    pub fn queue_name(&mut self, name: &str) -> &mut Self {
-        self.metrics_builder.name(name);
-        self
     }
 
     /// Sets the number of worker threads which the queue to be built will spawn.
@@ -49,30 +41,32 @@ impl TaskQueueBuilder {
         self
     }
 
-    /// Sets the registry of the metrics of this queue.
-    ///
-    /// The default value is `prometrics::default_registry()`.
-    pub fn metrics_registry(&mut self, registry: Registry) -> &mut Self {
-        self.metrics_builder.registry(registry);
+    /// Updates the settings of metrics using the given function.
+    pub fn metrics<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnOnce(&mut MetricBuilder),
+    {
+        f(&mut self.metrics);
         self
     }
 
     /// Builds a `TaskQueue` instance.
     pub fn finish(&self) -> TaskQueue {
         let (task_tx, task_rx) = mpsc::channel();
+        let metrics = Arc::new(Metrics::new(self.metrics.clone()));
+        metrics.workers.set(self.worker_count as f64);
         let workers = (0..self.worker_count)
-            .map(|i| Worker::start(i, &self.metrics_builder))
+            .map(|_| Worker::start(Arc::clone(&metrics)))
             .collect();
         let mut manager = TaskQueueManager {
             task_rx,
             workers,
             seq_num: 0,
             tasks: VecDeque::new(),
-            metrics: Metrics::new(&self.metrics_builder),
-            metrics_builder: self.metrics_builder.clone(),
+            metrics: Arc::clone(&metrics),
         };
         thread::spawn(move || while manager.run_once() {});
-        TaskQueue { task_tx }
+        TaskQueue { task_tx, metrics }
     }
 }
 impl Default for TaskQueueBuilder {
@@ -97,6 +91,7 @@ impl Default for TaskQueueBuilder {
 #[derive(Debug, Clone)]
 pub struct TaskQueue {
     task_tx: mpsc::Sender<Task>,
+    metrics: Arc<Metrics>,
 }
 impl TaskQueue {
     /// Makes a new `TaskQueue` instance.
@@ -117,6 +112,7 @@ impl TaskQueue {
         F: FnOnce() + Send + 'static,
     {
         assert!(self.task_tx.send(Task::new(task)).is_ok());
+        self.metrics.enqueued_tasks.increment();
     }
 }
 impl Default for TaskQueue {
@@ -131,18 +127,15 @@ struct TaskQueueManager {
     workers: Vec<WorkerHandle>,
     seq_num: usize,
     tasks: VecDeque<Task>,
-    metrics: Metrics,
-    metrics_builder: MetricsBuilder,
+    metrics: Arc<Metrics>,
 }
 impl TaskQueueManager {
     fn run_once(&mut self) -> bool {
         while let Ok(task) = self.task_rx.try_recv() {
-            self.metrics.enqueued_tasks.increment();
             self.tasks.push_back(task);
         }
         if self.tasks.is_empty() {
             if let Ok(task) = self.task_rx.recv() {
-                self.metrics.enqueued_tasks.increment();
                 self.tasks.push_back(task);
             } else {
                 return false;
@@ -164,7 +157,7 @@ impl TaskQueueManager {
             let i = self.seq_num % self.workers.len();
             match self.workers[i].try_execute(task) {
                 Err(t) => {
-                    self.workers[i] = Worker::start(i, &self.metrics_builder);
+                    self.workers[i] = Worker::start(Arc::clone(&self.metrics));
                     self.metrics.worker_restarts.increment();
                     task = t;
                 }
@@ -175,36 +168,5 @@ impl TaskQueueManager {
             }
         }
         Some(task)
-    }
-}
-
-#[derive(Debug)]
-struct Metrics {
-    enqueued_tasks: Counter,
-    dequeued_tasks: Counter,
-    worker_restarts: Counter,
-}
-impl Metrics {
-    pub fn new(builder: &MetricsBuilder) -> Self {
-        Metrics {
-            enqueued_tasks: builder
-                .counter("enqueued_tasks_total")
-                .subsystem("queue")
-                .help("Number of enqueued tasks")
-                .finish()
-                .expect("Never fails"),
-            dequeued_tasks: builder
-                .counter("dequeued_tasks_total")
-                .subsystem("queue")
-                .help("Number of dequeued tasks (those may not have been executed yet)")
-                .finish()
-                .expect("Never fails"),
-            worker_restarts: builder
-                .counter("restarts_total")
-                .subsystem("worker")
-                .help("Number of worker restarts")
-                .finish()
-                .expect("Never fails"),
-        }
     }
 }
