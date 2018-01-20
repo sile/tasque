@@ -122,6 +122,16 @@ impl TaskQueue {
         let ctrl = Control::SetWorkerCount(count);
         let _ = self.ctrl_tx.send(ctrl);
     }
+
+    /// Returns the number of worker threads of this queue.
+    pub fn worker_count(&self) -> usize {
+        self.metrics.workers.value() as usize
+    }
+
+    /// Returns the number of tasks (enqueued but not yet dequeued) in this queue.
+    pub fn len(&self) -> usize {
+        (self.metrics.enqueued_tasks.value() - self.metrics.dequeued_tasks.value()) as usize
+    }
 }
 impl Default for TaskQueue {
     fn default() -> Self {

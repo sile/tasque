@@ -57,9 +57,17 @@ mod tests {
                 let _ = tx.send(i);
             });
         }
+        assert_eq!(queue.len(), 3);
         assert_eq!(rx.recv().ok(), Some(0));
+
+        assert_eq!(queue.len(), 2);
         assert_eq!(rx.recv().ok(), Some(1));
+
+        assert_eq!(queue.len(), 1);
         assert_eq!(rx.recv().ok(), Some(2));
+
+        assert_eq!(queue.len(), 0);
+        assert_eq!(queue.worker_count(), 1);
     }
 
     #[test]
@@ -72,9 +80,12 @@ mod tests {
                 let _ = tx.send(i);
             });
         }
+        assert_eq!(queue.len(), 3);
         assert_eq!(rx.recv().ok(), Some(2));
         assert_eq!(rx.recv().ok(), Some(1));
         assert_eq!(rx.recv().ok(), Some(0));
+        assert_eq!(queue.len(), 0);
+        assert_eq!(queue.worker_count(), 3);
     }
 
     #[test]
@@ -85,5 +96,6 @@ mod tests {
         thread::sleep(Duration::from_millis(1));
         queue.enqueue(move || tx.send(0).unwrap());
         assert_eq!(rx.recv().ok(), Some(0));
+        assert_eq!(queue.len(), 0);
     }
 }
