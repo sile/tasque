@@ -5,7 +5,7 @@ use queue::Control;
 use worker::WorkerHandle;
 
 pub struct Task {
-    task: Box<FnMut() + Send + 'static>,
+    task: Box<dyn FnMut() + Send + 'static>,
     ctrl_tx: mpsc::Sender<Control>,
     worker: Option<WorkerHandle>,
 }
