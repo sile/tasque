@@ -132,6 +132,11 @@ impl TaskQueue {
     pub fn len(&self) -> usize {
         (self.metrics.enqueued_tasks.value() - self.metrics.dequeued_tasks.value()) as usize
     }
+
+    /// Returns `true` if this queue is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 impl Default for TaskQueue {
     fn default() -> Self {
