@@ -1,10 +1,9 @@
 tasque
 =======
 
-[![tasque](http://meritbadge.herokuapp.com/tasque)](https://crates.io/crates/tasque)
+[![tasque](https://img.shields.io/crates/v/tasque.svg)](https://crates.io/crates/tasque)
 [![Documentation](https://docs.rs/tasque/badge.svg)](https://docs.rs/tasque)
-[![Build Status](https://travis-ci.org/sile/tasque.svg?branch=master)](https://travis-ci.org/sile/tasque)
-[![Code Coverage](https://codecov.io/gh/sile/tasque/branch/master/graph/badge.svg)](https://codecov.io/gh/sile/tasque/branch/master)
+[![Actions Status](https://github.com/sile/tasque/workflows/CI/badge.svg)](https://github.com/sile/tasque/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A simple thread pool library for Rust.
