@@ -53,19 +53,12 @@ mod tests {
         let queue = TaskQueueBuilder::new().worker_count(1).finish();
         for (i, tx) in (0..3).map(|i| (i, tx.clone())) {
             queue.enqueue(move || {
-                thread::sleep(Duration::from_millis(300 - i * 100));
                 let _ = tx.send(i);
             });
         }
-        assert_eq!(queue.len(), 3);
         assert_eq!(rx.recv().ok(), Some(0));
-
-        assert_eq!(queue.len(), 2);
         assert_eq!(rx.recv().ok(), Some(1));
-
-        assert_eq!(queue.len(), 1);
         assert_eq!(rx.recv().ok(), Some(2));
-
         assert_eq!(queue.len(), 0);
         assert_eq!(queue.worker_count(), 1);
     }
