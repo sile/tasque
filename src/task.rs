@@ -1,8 +1,7 @@
+use crate::queue::Control;
+use crate::worker::WorkerHandle;
 use std::fmt;
 use std::sync::mpsc;
-
-use queue::Control;
-use worker::WorkerHandle;
 
 pub struct Task {
     task: Box<dyn FnMut() + Send + 'static>,

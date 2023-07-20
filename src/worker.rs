@@ -1,9 +1,8 @@
+use crate::metrics::Metrics;
+use crate::task::Task;
 use std::sync::mpsc::{self, SendError};
 use std::sync::Arc;
 use std::thread;
-
-use metrics::Metrics;
-use task::Task;
 
 #[derive(Debug)]
 pub struct Worker {
