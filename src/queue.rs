@@ -1,7 +1,6 @@
 use crate::metrics::Metrics;
 use crate::task::Task;
 use crate::worker::{Worker, WorkerHandle};
-use num_cpus;
 use prometrics::metrics::MetricBuilder;
 use std::sync::mpsc;
 use std::sync::Arc;
