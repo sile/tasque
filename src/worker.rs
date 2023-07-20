@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::mpsc::{self, SendError};
+use std::sync::Arc;
 use std::thread;
 
 use metrics::Metrics;

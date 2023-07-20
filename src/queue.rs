@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use std::sync::mpsc;
-use std::thread;
-use prometrics::metrics::MetricBuilder;
 use num_cpus;
+use prometrics::metrics::MetricBuilder;
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
 
 use metrics::Metrics;
 use task::Task;
